@@ -1,0 +1,23 @@
+# Example research assignment for testing
+title: "Japanese Tech Companies - English Training Needs Analysis"
+priority: high
+deadline: "7:00 AM"
+
+objectives:
+  - "Find 10 Japanese tech companies that have recently expanded globally"
+  - "Identify English communication challenges mentioned in employee reviews"
+  - "Discover what English training solutions they currently use"
+  - "Find decision makers in HR or Training departments"
+
+depth: comprehensive  # comprehensive or quick_scan
+report_style: bullets  # bullets, narrative, or executive
+
+special_sources:
+  - "Glassdoor reviews mentioning English or communication"
+  - "LinkedIn job postings requiring English skills"
+  - "Reddit discussions about working in Japanese tech companies"
+  - "Press releases about international expansion"
+
+output:
+  format: single  # single or multiple
+  max_reports: 3
