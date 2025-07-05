@@ -1,0 +1,36 @@
+# AI Researcher Configuration
+# Copy this to config.yaml and update with your settings
+
+# LocalSend paths
+localsend:
+  input_path: "C:/Users/YourName/LocalSend/Downloads"
+  output_path: "C:/Users/YourName/LocalSend/Uploads"
+  check_interval: 300  # seconds
+
+# Ollama settings
+ollama:
+  host: "localhost"
+  port: 11434
+  model: "dolphin-llama3:8b"
+  temperature: 0.7
+  context_length: 128000
+
+# Research settings
+research:
+  max_cycles: 5
+  sources_per_cycle: 10
+  min_source_quality: 7  # 1-10 scale
+  checkpoint_interval: 600  # seconds
+  
+# Hardware monitoring
+monitoring:
+  enabled: true
+  max_cpu_temp: 85  # Celsius
+  max_gpu_temp: 80  # Celsius
+  check_interval: 60  # seconds
+
+# Report settings
+reports:
+  default_format: "markdown"
+  include_citations: true
+  max_length: 10000  # words
