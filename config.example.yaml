@@ -17,7 +17,7 @@ ollama:
 
 # Brave Search settings
 brave_search:
-  api_key: "BSAA-LPFdTriG-3w4RRg9k5lSyt1avZ"  # Get from https://brave.com/search/api/
+  api_key: "YOUR_ACTUAL_BRAVE_API_KEY_HERE"  # Get from https://brave.com/search/api/
 
 # Research settings
 research:
