@@ -27,25 +27,36 @@ async def test_research_pipeline():
         print(f"✓ Ollama working: {response['response'].strip()}")
     except Exception as e:
         print(f"✗ Ollama error: {e}")
-        print("  Make sure Ollama is running and dolphin-llama3:8b is installed")
+        print("  Make sure Ollama is running and dolphin3:latest is installed")
         return
     
-    # 2. Test web search with Crawl4ai
-    print("\n2. Testing web search...")
+    # 2. Test web crawling with Crawl4ai
+    print("\n2. Testing web crawling...")
     crawler = None
     try:
         crawler = AsyncWebCrawler()
         await crawler.start()
         
-        # Simple search
-        results = await crawler.search("Rakuten English training needs", max_results=3)
-        print(f"✓ Found {len(results)} search results")
+        # Crawl a specific URL instead of searching
+        test_url = "https://www.rakuten.com/"
+        result = await crawler.crawl(test_url)
         
-        if results:
-            print(f"  First result: {results[0].get('title', 'No title')[:60]}...")
+        if result and result.markdown:
+            print(f"✓ Successfully crawled {test_url}")
+            print(f"  Content length: {len(result.markdown)} characters")
+            
+            # Create mock "search results" for the next test
+            results = [{
+                'url': test_url,
+                'title': result.title or 'Rakuten',
+                'snippet': result.markdown[:200] if result.markdown else 'No content'
+            }]
+        else:
+            print("✗ No content retrieved")
+            results = []
             
     except Exception as e:
-        print(f"✗ Web search error: {e}")
+        print(f"✗ Web crawl error: {e}")
         return
     finally:
         if crawler:
@@ -55,10 +66,10 @@ async def test_research_pipeline():
     print("\n3. Testing research analysis...")
     try:
         research_prompt = f"""
-        Based on these search results about Rakuten:
-        {[r.get('snippet', '')[:100] for r in results[:2]]}
+        Based on this information about Rakuten:
+        {results[0]['snippet'] if results else 'No data available'}
         
-        What English training challenges might they face?
+        What English training challenges might a Japanese tech company face?
         Answer in 2-3 bullet points.
         """
         
@@ -76,18 +87,19 @@ async def test_research_pipeline():
     # 4. Test report generation
     print("\n4. Testing report generation...")
     try:
+        from datetime import datetime
+        
         report = f"""
 # Rakuten English Training Analysis
 
 ## Test Report
-Generated: {asyncio.get_event_loop().time()}
+Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 ## Key Findings
 {analysis['response']}
 
 ## Sources
 - {results[0].get('url', 'No URL')}
-- {results[1].get('url', 'No URL') if len(results) > 1 else 'No second source'}
 
 ---
 *This is a test report from the minimal test suite*
