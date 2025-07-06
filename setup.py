@@ -31,7 +31,7 @@ def check_requirements():
     # Check if model is available
     try:
         result = subprocess.run(['ollama', 'list'], capture_output=True, text=True)
-        if 'dolphin-llama3:8b' in result.stdout:
+        if 'dolphin3:latest' in result.stdout:
             print("✅ Dolphin model available")
         else:
             print("⚠️  Dolphin model not found")
