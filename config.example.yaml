@@ -3,15 +3,15 @@
 
 # LocalSend paths
 localsend:
-  input_path: "C:/Users/YourName/LocalSend/Downloads"
-  output_path: "C:/Users/YourName/LocalSend/Uploads"
+  input_path: "C:\Users\seanr\Desktop\AI_Researcher\input"
+  output_path: "C:\Users\seanr\Desktop\AI_Researcher\output"
   check_interval: 300  # seconds
 
 # Ollama settings
 ollama:
   host: "localhost"
   port: 11434
-  model: "dolphin-llama3:8b"
+  model: "dolphin3:latest"
   temperature: 0.7
   context_length: 128000
 
