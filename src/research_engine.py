@@ -100,7 +100,7 @@ class ResearchEngine:
             strategy = {
                 'approach': 'Comprehensive web research',
                 'key_questions': assignment['objectives'],
-                'search_queries': [obj.split()[:3] for obj in assignment['objectives']],
+                'search_queries': [' '.join(obj.split()[:3]) for obj in assignment['objectives']],
                 'cycles': 3,
                 'priority_sources': ['corporate sites', 'news', 'forums']
             }
@@ -153,7 +153,7 @@ class ResearchEngine:
             return queries
         except:
             # Fallback to variations of original queries
-            return [q + " 2024" for q in strategy['search_queries'][:5]]
+            return [f"{q} 2025" for q in strategy['search_queries'][:5]]
             
     async def refine_strategy(self, strategy: Dict, findings: List) -> Dict:
         """Refine strategy based on findings."""
