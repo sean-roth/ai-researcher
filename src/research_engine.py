@@ -88,8 +88,7 @@ class ResearchEngine:
         
         response = await self.ollama.generate(
             model=self.config['ollama']['model'],
-            prompt=prompt,
-            temperature=self.config['ollama']['temperature']
+            prompt=prompt
         )
         
         # Parse JSON response
