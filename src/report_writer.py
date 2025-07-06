@@ -3,7 +3,8 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set
+from collections import defaultdict
 
 import yaml
 
@@ -55,21 +56,30 @@ class ReportWriter:
     async def _generate_single_report(self, assignment: Dict, findings: List[Dict],
                                     strategy: Dict, style: str) -> Path:
         """Generate a single comprehensive report."""
-        template = self.templates.get(style, self.templates['bullets'])
+        # Extract structured data from findings
+        structured_data = self._extract_all_structured_data(findings)
         
-        # Format findings
-        formatted_findings = self._format_findings(findings, style)
+        # Create content sections
+        companies_section = self._format_companies(structured_data['companies'])
+        challenges_section = self._format_challenges(structured_data['challenges'])
+        solutions_section = self._format_solutions(structured_data['solutions'])
+        decision_makers_section = self._format_decision_makers(structured_data['decision_makers'])
+        insights_section = self._format_key_insights(structured_data['insights'])
         
         # Generate report content
-        report_content = template.format(
-            title=assignment['title'],
-            date=datetime.now().strftime('%Y-%m-%d %H:%M'),
-            objectives='\n'.join([f"- {obj}" for obj in assignment['objectives']]),
-            strategy=strategy['approach'],
-            findings=formatted_findings,
-            sources=self._format_sources(findings),
-            total_sources=len(set(f['url'] for f in findings if 'url' in f))
-        )
+        if style == 'bullets':
+            report_content = self._generate_bullet_report(
+                assignment, strategy, companies_section, challenges_section,
+                solutions_section, decision_makers_section, insights_section,
+                findings, structured_data
+            )
+        else:
+            # For now, use bullet format for all styles
+            report_content = self._generate_bullet_report(
+                assignment, strategy, companies_section, challenges_section,
+                solutions_section, decision_makers_section, insights_section,
+                findings, structured_data
+            )
         
         # Save report
         report_path = Path('output') / f"{assignment['title'][:50]}_{datetime.now():%Y%m%d_%H%M}.md"
@@ -79,49 +89,265 @@ class ReportWriter:
         logger.info(f"Report generated: {report_path}")
         return report_path
         
-    async def _generate_focused_report(self, assignment: Dict, findings: List[Dict],
-                                     focus: str, style: str) -> Path:
-        """Generate a focused report on a specific aspect."""
-        # Similar to single report but with focused title and content
-        template = self.templates.get(style, self.templates['bullets'])
+    def _extract_all_structured_data(self, findings: List[Dict]) -> Dict:
+        """Extract all structured data from findings."""
+        data = {
+            'companies': defaultdict(list),
+            'challenges': [],
+            'solutions': [],
+            'decision_makers': [],
+            'insights': [],
+            'quotes': [],
+            'expansion_info': []
+        }
         
-        report_content = template.format(
-            title=f"{assignment['title']} - {focus}",
-            date=datetime.now().strftime('%Y-%m-%d %H:%M'),
-            objectives=f"Focus: {focus}",
-            strategy="Targeted research",
-            findings=self._format_findings(findings, style),
-            sources=self._format_sources(findings),
-            total_sources=len(set(f['url'] for f in findings if 'url' in f))
-        )
+        for finding in findings:
+            if 'extracted_data' not in finding:
+                continue
+                
+            extracted = finding['extracted_data']
+            source_info = {
+                'url': finding.get('url', ''),
+                'title': finding.get('title', '')
+            }
+            
+            # Extract companies with context
+            if extracted.get('companies'):
+                for company in extracted['companies']:
+                    if isinstance(company, dict):
+                        data['companies'][company.get('name', str(company))].append({
+                            'context': company.get('context', ''),
+                            'source': source_info
+                        })
+                    else:
+                        data['companies'][str(company)].append({
+                            'context': '',
+                            'source': source_info
+                        })
+            
+            # Extract challenges
+            if extracted.get('english_challenges'):
+                for challenge in extracted['english_challenges']:
+                    data['challenges'].append({
+                        'challenge': str(challenge),
+                        'source': source_info
+                    })
+            
+            # Extract solutions
+            if extracted.get('current_solutions'):
+                for solution in extracted['current_solutions']:
+                    data['solutions'].append({
+                        'solution': str(solution),
+                        'source': source_info
+                    })
+            
+            # Extract decision makers
+            if extracted.get('decision_makers'):
+                for person in extracted['decision_makers']:
+                    if isinstance(person, dict):
+                        data['decision_makers'].append({
+                            'name': person.get('name', 'Unknown'),
+                            'title': person.get('title', 'Unknown'),
+                            'company': person.get('company', 'Unknown'),
+                            'source': source_info
+                        })
+                    else:
+                        data['decision_makers'].append({
+                            'info': str(person),
+                            'source': source_info
+                        })
+            
+            # Extract insights
+            if extracted.get('key_insights'):
+                insights = extracted['key_insights']
+                if isinstance(insights, list):
+                    for insight in insights:
+                        data['insights'].append({
+                            'insight': str(insight),
+                            'source': source_info
+                        })
+                else:
+                    data['insights'].append({
+                        'insight': str(insights),
+                        'source': source_info
+                    })
+            
+            # Extract employee feedback
+            if extracted.get('employee_feedback'):
+                for feedback in extracted['employee_feedback']:
+                    data['quotes'].append({
+                        'quote': str(feedback),
+                        'source': source_info
+                    })
+            
+            # Extract expansion info
+            if extracted.get('expansion_info'):
+                for info in extracted['expansion_info']:
+                    data['expansion_info'].append({
+                        'info': str(info),
+                        'source': source_info
+                    })
         
-        report_path = Path('output') / f"{focus}_{datetime.now():%Y%m%d_%H%M}.md"
-        report_path.parent.mkdir(exist_ok=True)
-        report_path.write_text(report_content)
+        return data
         
-        return report_path
+    def _format_companies(self, companies: Dict[str, List]) -> str:
+        """Format companies section."""
+        if not companies:
+            return "*No specific companies identified yet*\n"
         
-    def _format_findings(self, findings: List[Dict], style: str) -> str:
-        """Format findings based on report style."""
-        if style == 'bullets':
-            formatted = []
-            for f in findings[:20]:  # Limit to top 20
+        sections = []
+        for company, contexts in list(companies.items())[:10]:  # Top 10 companies
+            section = f"### {company}\n"
+            if contexts[0]['context']:
+                section += f"- Context: {contexts[0]['context']}\n"
+            section += f"- Found in {len(contexts)} source(s)\n"
+            section += f"- [Source: {contexts[0]['source']['title']}]({contexts[0]['source']['url']})\n"
+            sections.append(section)
+        
+        return "\n".join(sections)
+        
+    def _format_challenges(self, challenges: List[Dict]) -> str:
+        """Format challenges section."""
+        if not challenges:
+            return "*No specific challenges identified yet*\n"
+        
+        unique_challenges = {}
+        for item in challenges:
+            challenge = item['challenge']
+            if challenge not in unique_challenges:
+                unique_challenges[challenge] = item
+        
+        formatted = []
+        for challenge, item in list(unique_challenges.items())[:15]:
+            formatted.append(f"- {challenge} ([source]({item['source']['url']}))")
+        
+        return "\n".join(formatted)
+        
+    def _format_solutions(self, solutions: List[Dict]) -> str:
+        """Format solutions section."""
+        if not solutions:
+            return "*No training solutions identified yet*\n"
+        
+        unique_solutions = {}
+        for item in solutions:
+            solution = item['solution']
+            if solution not in unique_solutions:
+                unique_solutions[solution] = item
+        
+        formatted = []
+        for solution, item in list(unique_solutions.items())[:10]:
+            formatted.append(f"- **{solution}** ([source]({item['source']['url']}))")
+        
+        return "\n".join(formatted)
+        
+    def _format_decision_makers(self, decision_makers: List[Dict]) -> str:
+        """Format decision makers section."""
+        if not decision_makers:
+            return "*No decision makers identified yet*\n"
+        
+        formatted = []
+        seen = set()
+        
+        for person in decision_makers:
+            if 'name' in person and person['name'] != 'Unknown':
+                key = f"{person['name']}-{person.get('company', '')}"
+                if key not in seen:
+                    seen.add(key)
+                    formatted.append(
+                        f"- **{person['name']}** - {person.get('title', 'Unknown')} "
+                        f"at {person.get('company', 'Unknown')} "
+                        f"([source]({person['source']['url']}))"
+                    )
+            elif 'info' in person:
+                if person['info'] not in seen:
+                    seen.add(person['info'])
+                    formatted.append(f"- {person['info']} ([source]({person['source']['url']}))")
+        
+        return "\n".join(formatted[:10])  # Top 10
+        
+    def _format_key_insights(self, insights: List[Dict]) -> str:
+        """Format key insights section."""
+        if not insights:
+            return "*No key insights extracted yet*\n"
+        
+        # Group similar insights and pick the best ones
+        formatted = []
+        seen_insights = set()
+        
+        for item in insights[:20]:
+            insight = item['insight']
+            # Simple deduplication based on first 50 chars
+            insight_key = insight[:50].lower()
+            if insight_key not in seen_insights:
+                seen_insights.add(insight_key)
                 formatted.append(
-                    f"- **{f.get('title', 'Finding')}**: {f.get('key_insight', 'No insight')}\n"
-                    f"  - Source: [{f.get('url', 'Unknown')}]({f.get('url', '#')})\n"
-                    f"  - Quality: {f.get('quality_score', 0)}/10\n"
+                    f"- {insight} ([source]({item['source']['url']}))"
                 )
-            return '\n'.join(formatted)
-            
-        elif style == 'narrative':
-            # Create a flowing narrative from findings
-            insights = [f.get('key_insight', '') for f in findings if f.get('key_insight')]
-            return ' '.join(insights[:10])
-            
-        else:  # executive
-            # High-level summary
-            return self._create_executive_summary(findings)
-            
+        
+        return "\n".join(formatted[:10])  # Top 10 unique insights
+        
+    def _generate_bullet_report(self, assignment, strategy, companies_section,
+                               challenges_section, solutions_section,
+                               decision_makers_section, insights_section,
+                               findings, structured_data):
+        """Generate a bullet-point style report."""
+        
+        # Count unique items
+        company_count = len(structured_data['companies'])
+        challenge_count = len(set(item['challenge'] for item in structured_data['challenges']))
+        solution_count = len(set(item['solution'] for item in structured_data['solutions']))
+        decision_maker_count = len(structured_data['decision_makers'])
+        
+        return f"""# {assignment['title']}
+
+**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  
+**Sources Analyzed**: {len(set(f['url'] for f in findings if 'url' in f))}  
+**Companies Found**: {company_count}  
+**Decision Makers**: {decision_maker_count}  
+**Training Solutions**: {solution_count}  
+
+## Executive Summary
+
+Research identified **{company_count} Japanese tech companies** with English communication needs, discovered **{challenge_count} specific challenges** they face, and found **{solution_count} training solutions** currently in use. We also identified **{decision_maker_count} potential decision makers** in HR and L&D roles.
+
+## Research Objectives
+
+{chr(10).join([f"- {obj}" for obj in assignment['objectives']])}
+
+## Companies Identified
+
+{companies_section}
+
+## English Communication Challenges
+
+{challenges_section}
+
+## Current Training Solutions
+
+{solutions_section}
+
+## Key Decision Makers
+
+{decision_makers_section}
+
+## Strategic Insights
+
+{insights_section}
+
+## Research Methodology
+
+{strategy['approach']}
+
+**Search Strategy**: Conducted {len(strategy.get('cycles', 3))} research cycles using diverse search queries including company-specific searches, employee review platforms, industry reports, and LinkedIn profiles.
+
+## Sources
+
+{self._format_sources(findings)}
+
+---
+*Report generated by AI Researcher - Overnight Research Assistant*
+"""
+        
     def _format_sources(self, findings: List[Dict]) -> str:
         """Format unique sources as citations."""
         sources = {}
@@ -133,99 +359,16 @@ class ReportWriter:
         for i, (url, title) in enumerate(sources.items(), 1):
             formatted.append(f"{i}. [{title}]({url})")
             
-        return '\n'.join(formatted[:20])  # Limit to 20 sources
-        
-    def _group_findings(self, findings: List[Dict], assignment: Dict) -> Dict[str, List[Dict]]:
-        """Group findings by theme or objective."""
-        groups = {}
-        
-        # Simple grouping by objective keywords
-        for obj in assignment['objectives']:
-            obj_key = obj[:30]  # Short key
-            groups[obj_key] = [
-                f for f in findings 
-                if any(word in f.get('key_insight', '').lower() 
-                      for word in obj.lower().split())
-            ]
-            
-        return groups
-        
-    def _create_executive_summary(self, findings: List[Dict]) -> str:
-        """Create executive summary from findings."""
-        summary_parts = [
-            "## Key Discoveries\n",
-            f"Analyzed {len(findings)} sources with the following insights:\n"
-        ]
-        
-        # Top 5 insights
-        top_findings = sorted(findings, key=lambda x: x.get('quality_score', 0), reverse=True)[:5]
-        
-        for i, f in enumerate(top_findings, 1):
-            summary_parts.append(
-                f"{i}. {f.get('key_insight', 'No insight available')[:200]}...\n"
-            )
-            
-        return '\n'.join(summary_parts)
+        return '\n'.join(formatted[:30])  # Limit to 30 sources
         
     def _bullet_template(self) -> str:
         """Bullet point report template."""
-        return """# {title}
-
-**Generated**: {date}  
-**Total Sources Analyzed**: {total_sources}
-
-## Objectives
-{objectives}
-
-## Research Strategy
-{strategy}
-
-## Key Findings
-
-{findings}
-
-## Sources
-
-{sources}
-
----
-*Report generated by AI Researcher*
-"""
+        return "{content}"  # Now handled in _generate_bullet_report
         
     def _narrative_template(self) -> str:
         """Narrative report template."""
-        return """# {title}
-
-**Date**: {date}
-
-## Executive Summary
-
-Based on analysis of {total_sources} sources, our research reveals:
-
-{findings}
-
-## Research Objectives
-{objectives}
-
-## Methodology
-{strategy}
-
-## References
-{sources}
-"""
+        return "{content}"  # Placeholder
         
     def _executive_template(self) -> str:
         """Executive summary template."""
-        return """# {title} - Executive Brief
-
-**Date**: {date}  
-**Sources**: {total_sources}
-
-{findings}
-
-## Next Steps
-Based on these findings, recommended actions include further investigation into the most promising opportunities identified above.
-
-## Full Source List
-{sources}
-"""
+        return "{content}"  # Placeholder
