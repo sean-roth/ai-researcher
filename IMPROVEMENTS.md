@@ -1,6 +1,21 @@
 # Recent Improvements (July 6, 2025)
 
-## Major Fixes Applied
+## Latest Fixes (3:40 PM)
+
+### Fixed Brave Search API Validation Errors
+- **Problem**: The `brave-search` Python library was throwing validation errors because some URLs in the response didn't have `https://` prefixes
+- **Solution**: Switched to direct HTTP requests using `httpx`, bypassing the strict validation
+- **Result**: Brave Search now works properly and returns real search results
+
+### Improved Extraction Prompts
+- **Problem**: The LLM was returning `{"relevant_findings": false}` even on good content
+- **Solution**: 
+  - Made extraction prompts more explicit and instructive
+  - Added clear examples of what to extract
+  - Improved JSON parsing to handle extra text in responses
+- **Result**: Should now extract actual company names, people, and challenges
+
+## Major Fixes Applied Earlier
 
 ### 1. **Content Extraction Fixed**
 - **Before**: Only analyzed first 1000-2000 characters of crawled pages (like reading just the header)
@@ -40,104 +55,102 @@
   - Named decision makers
   - Actionable intelligence
 
-### 6. **Brave Search API Fix** (Latest)
-- **Issue**: API response structure was different than expected
-- **Fix**: Now handles both dictionary and object-based responses
-- **Improvement**: Better fallback URLs when Brave Search fails
+## Installation & Setup
 
-### 7. **Improved Relevance Scoring**
-- **Before**: Strict scoring that rejected potentially good content
-- **After**: 
-  - More lenient scoring for known good sources (Glassdoor, LinkedIn)
-  - Better instructions to LLM for relevance checking
-  - Lower threshold (5) for job boards and review sites
-
-## Troubleshooting
-
-### If Brave Search is failing:
+### 1. Install Dependencies
 ```bash
-# Debug the API response structure
-python tests/debug_brave_search.py
+pip install -r requirements.txt
+```
+Note: We now use `httpx` for direct API calls.
+
+### 2. Configure Brave Search
+```yaml
+# config.yaml
+brave_search:
+  api_key: "YOUR_ACTUAL_API_KEY"  # Get from https://brave.com/search/api/
 ```
 
-### If no content is being extracted:
+### 3. Ensure Ollama is Running
 ```bash
-# Test with known good URLs
-python tests/test_known_urls.py
+ollama serve
+ollama pull dolphin3:latest  # Or your preferred model
 ```
-
-### Common Issues:
-
-1. **"'dict' object has no attribute 'url'" error**
-   - Fixed in latest update - Brave API returns dictionaries, not objects
-   
-2. **Low relevance scores (all content rejected)**
-   - Fixed by making relevance checking more lenient
-   - Added special handling for job boards and review sites
-   
-3. **No companies found**
-   - Check if Brave Search API key is properly configured
-   - Try the fallback URLs test to ensure crawling works
 
 ## Testing the Improvements
 
+### Test Extraction on Sample Content
 ```bash
-# Quick test of extraction capabilities
+python tests/test_extraction.py
+```
+This tests extraction on known good content to verify the LLM is working.
+
+### Run Full Diagnostic
+```bash
+python tests/diagnose_pipeline.py
+```
+This tests each component and tells you what's working.
+
+### Quick Test
+```bash
 python tests/test_improved_research.py --quick
+```
 
-# Full research test (takes 5-10 minutes)
+### Full Research Test
+```bash
 python tests/test_improved_research.py
-
-# Debug Brave Search API
-python tests/debug_brave_search.py
-
-# Test with known good URLs
-python tests/test_known_urls.py
 ```
 
 ## What to Expect Now
 
 Instead of:
 ```
-- Japan Dev: Japanese tech companies face English challenges
+Found 0 relevant sources
 ```
 
-You'll get:
+You should see:
 ```
-### Rakuten
-- Context: Expanded to US market in 2024, established engineering offices
-- English Challenges: 
-  - "Meetings with US team difficult due to language barriers" (Glassdoor)
-  - Technical documentation translation delays
-- Current Solution: Berlitz corporate training program
-- Decision Maker: Hiroshi Tanaka - VP of Global Talent Development
+Found 3 relevant sources
+- Rakuten English Initiative (score: 8/10)
+  Companies: ["Rakuten - Made English official language in 2010"]
+  Challenges: ["Meeting productivity dropped 30-40%", "Engineers couldn't express technical concepts"]
+  Solutions: ["Berlitz corporate training", "TOEIC 700+ requirement"]
+  Decision Makers: ["Hiroshi Mikitani - CEO", "Yuki Sato - HR Director"]
 ```
 
-## Configuration Checklist
+## Troubleshooting
 
-1. **Brave Search API Key**
-   ```yaml
-   brave_search:
-     api_key: "YOUR_ACTUAL_API_KEY"  # Get from https://brave.com/search/api/
-   ```
+### If Still Getting 0 Results:
 
-2. **Ollama Model**
-   ```yaml
-   ollama:
-     model: "dolphin3:latest"  # Or your preferred model
-   ```
-
-3. **Verify Ollama is running**
+1. **Check Brave Search is working**:
    ```bash
-   curl http://localhost:11434/api/tags
+   python tests/test_extraction.py
    ```
+   Look for "TESTING BRAVE SEARCH" section.
+
+2. **Check extraction is working**:
+   The same test will show if the LLM can extract from sample content.
+
+3. **Check your model**:
+   ```bash
+   ollama list
+   ```
+   Make sure the model in `config.yaml` matches an installed model.
+
+4. **Try with more verbose logging**:
+   The logs now show what's being extracted from each URL.
+
+### Common Issues:
+
+1. **Ollama not responding**: Make sure `ollama serve` is running
+2. **Wrong model name**: Check `ollama list` for correct model name
+3. **API key issues**: Get a free key from https://brave.com/search/api/
 
 ## Next Steps
 
-1. Configure your Brave Search API key in `config.yaml`
-2. Run `python tests/debug_brave_search.py` to verify API access
-3. Run the improved test to see the difference
-4. Monitor the logs to see the multi-cycle research in action
-5. Review the structured output report
+The system should now:
+1. Successfully search using Brave API (or fall back to good URLs)
+2. Crawl and extract substantial content
+3. Find specific companies, people, and challenges
+4. Generate detailed reports with structured data
 
-The system now truly leverages its "overnight" advantage by going deep rather than fast!
+Run `python tests/test_extraction.py` first to verify everything is working!
