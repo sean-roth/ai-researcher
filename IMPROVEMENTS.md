@@ -40,6 +40,45 @@
   - Named decision makers
   - Actionable intelligence
 
+### 6. **Brave Search API Fix** (Latest)
+- **Issue**: API response structure was different than expected
+- **Fix**: Now handles both dictionary and object-based responses
+- **Improvement**: Better fallback URLs when Brave Search fails
+
+### 7. **Improved Relevance Scoring**
+- **Before**: Strict scoring that rejected potentially good content
+- **After**: 
+  - More lenient scoring for known good sources (Glassdoor, LinkedIn)
+  - Better instructions to LLM for relevance checking
+  - Lower threshold (5) for job boards and review sites
+
+## Troubleshooting
+
+### If Brave Search is failing:
+```bash
+# Debug the API response structure
+python tests/debug_brave_search.py
+```
+
+### If no content is being extracted:
+```bash
+# Test with known good URLs
+python tests/test_known_urls.py
+```
+
+### Common Issues:
+
+1. **"'dict' object has no attribute 'url'" error**
+   - Fixed in latest update - Brave API returns dictionaries, not objects
+   
+2. **Low relevance scores (all content rejected)**
+   - Fixed by making relevance checking more lenient
+   - Added special handling for job boards and review sites
+   
+3. **No companies found**
+   - Check if Brave Search API key is properly configured
+   - Try the fallback URLs test to ensure crawling works
+
 ## Testing the Improvements
 
 ```bash
@@ -48,6 +87,12 @@ python tests/test_improved_research.py --quick
 
 # Full research test (takes 5-10 minutes)
 python tests/test_improved_research.py
+
+# Debug Brave Search API
+python tests/debug_brave_search.py
+
+# Test with known good URLs
+python tests/test_known_urls.py
 ```
 
 ## What to Expect Now
@@ -68,11 +113,31 @@ You'll get:
 - Decision Maker: Hiroshi Tanaka - VP of Global Talent Development
 ```
 
+## Configuration Checklist
+
+1. **Brave Search API Key**
+   ```yaml
+   brave_search:
+     api_key: "YOUR_ACTUAL_API_KEY"  # Get from https://brave.com/search/api/
+   ```
+
+2. **Ollama Model**
+   ```yaml
+   ollama:
+     model: "dolphin3:latest"  # Or your preferred model
+   ```
+
+3. **Verify Ollama is running**
+   ```bash
+   curl http://localhost:11434/api/tags
+   ```
+
 ## Next Steps
 
 1. Configure your Brave Search API key in `config.yaml`
-2. Run the improved test to see the difference
-3. Monitor the logs to see the multi-cycle research in action
-4. Review the structured output report
+2. Run `python tests/debug_brave_search.py` to verify API access
+3. Run the improved test to see the difference
+4. Monitor the logs to see the multi-cycle research in action
+5. Review the structured output report
 
 The system now truly leverages its "overnight" advantage by going deep rather than fast!
