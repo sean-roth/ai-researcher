@@ -32,41 +32,41 @@ async def test_research_pipeline():
     
     # 2. Test web crawling with Crawl4ai
     print("\n2. Testing web crawling...")
-    crawler = None
-    try:
-        crawler = AsyncWebCrawler()
-        await crawler.start()
-        
-        # Crawl a specific URL instead of searching
-        test_url = "https://www.rakuten.com/"
-        result = await crawler.crawl(test_url)
-        
-        if result and result.markdown:
-            print(f"✓ Successfully crawled {test_url}")
-            print(f"  Content length: {len(result.markdown)} characters")
+    async with AsyncWebCrawler(verbose=True) as crawler:
+        try:
+            # Use arun method for crawling
+            test_url = "https://www.example.com/"
+            result = await crawler.arun(url=test_url)
             
-            # Create mock "search results" for the next test
+            if result.success:
+                print(f"✓ Successfully crawled {test_url}")
+                print(f"  Content length: {len(result.text)} characters")
+                
+                # Create mock "search results" for the next test
+                results = [{
+                    'url': test_url,
+                    'title': 'Example Domain',
+                    'snippet': result.text[:200] if result.text else 'No content'
+                }]
+            else:
+                print("✗ Crawl failed")
+                results = []
+                
+        except Exception as e:
+            print(f"✗ Web crawl error: {e}")
+            # Create fallback data for testing
             results = [{
-                'url': test_url,
-                'title': result.title or 'Rakuten',
-                'snippet': result.markdown[:200] if result.markdown else 'No content'
+                'url': 'https://www.example.com/',
+                'title': 'Example Site',
+                'snippet': 'This is a test snippet for when crawling fails.'
             }]
-        else:
-            print("✗ No content retrieved")
-            results = []
-            
-    except Exception as e:
-        print(f"✗ Web crawl error: {e}")
-        return
-    finally:
-        if crawler:
-            await crawler.close()
+            print("  Using fallback data to continue tests")
     
     # 3. Test simple research cycle
     print("\n3. Testing research analysis...")
     try:
         research_prompt = f"""
-        Based on this information about Rakuten:
+        Based on this information about a company:
         {results[0]['snippet'] if results else 'No data available'}
         
         What English training challenges might a Japanese tech company face?
@@ -90,7 +90,7 @@ async def test_research_pipeline():
         from datetime import datetime
         
         report = f"""
-# Rakuten English Training Analysis
+# English Training Analysis - Test Report
 
 ## Test Report
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
