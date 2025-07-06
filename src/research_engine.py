@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import yaml
 from ollama import AsyncClient
@@ -101,7 +101,7 @@ class ResearchEngine:
         Respond in JSON format with keys:
         - approach: detailed strategy description (2-3 sentences)
         - key_questions: list of specific questions to answer
-        - search_queries: list of 10-15 diverse, specific search queries
+        - search_queries: list of 10-15 diverse, specific search queries (as strings)
         - cycles: number of research cycles (3-5 for comprehensive)
         - priority_sources: list of source types to focus on
         """
@@ -179,15 +179,41 @@ class ResearchEngine:
                 # Wait 1.1 seconds between searches to respect Brave's rate limit
                 logger.info("Waiting 1.1 seconds for rate limit...")
                 await asyncio.sleep(1.1)
-                
-            logger.info(f"Searching for: {query}")
+            
+            # Ensure query is a string
+            query_str = self._ensure_string_query(query)
+            logger.info(f"Searching for: {query_str}")
+            
             results = await self.web_researcher.search_and_analyze(
-                query, 
+                query_str, 
                 strategy['priority_sources']
             )
             findings.extend(results)
             
         return findings
+    
+    def _ensure_string_query(self, query: Union[str, Dict, List]) -> str:
+        """Ensure the query is a string, extracting from dict/list if needed."""
+        if isinstance(query, str):
+            return query
+        elif isinstance(query, dict):
+            # If it's a dict, try to get 'query' key or convert to string
+            if 'query' in query:
+                return str(query['query'])
+            else:
+                # Just take the first value that looks like a query
+                for k, v in query.items():
+                    if isinstance(v, str) and len(v) > 10:
+                        return v
+                return str(query)
+        elif isinstance(query, list):
+            # If it's a list, take the first string
+            for item in query:
+                if isinstance(item, str):
+                    return item
+            return str(query[0]) if query else "Japanese tech companies"
+        else:
+            return str(query)
         
     async def generate_queries(self, strategy: Dict, previous_findings: List, cycle: int) -> List[str]:
         """Generate search queries based on strategy and findings."""
@@ -232,7 +258,9 @@ class ResearchEngine:
         4. Locate budget/investment information
         5. Find employee testimonials or reviews
         
-        Make queries specific and actionable. Return as JSON array.
+        Make queries specific and actionable. 
+        Return ONLY a JSON array of 5 search query strings, nothing else.
+        Example: ["query one", "query two", "query three", "query four", "query five"]
         """
         
         response = await self.ollama.generate(
@@ -242,9 +270,26 @@ class ResearchEngine:
         )
         
         try:
-            queries = json.loads(response['response'])
-            return queries[:5]
-        except:
+            # Try to parse the response as JSON
+            response_text = response['response'].strip()
+            # Find JSON array in the response
+            if '[' in response_text and ']' in response_text:
+                start = response_text.find('[')
+                end = response_text.rfind(']') + 1
+                json_text = response_text[start:end]
+                queries = json.loads(json_text)
+                
+                # Ensure all queries are strings
+                string_queries = []
+                for q in queries:
+                    string_queries.append(self._ensure_string_query(q))
+                
+                return string_queries[:5]
+            else:
+                raise ValueError("No JSON array found")
+                
+        except Exception as e:
+            logger.warning(f"Failed to parse query response: {e}")
             # Fallback queries
             if self.found_entities['companies']:
                 company = list(self.found_entities['companies'])[0]
