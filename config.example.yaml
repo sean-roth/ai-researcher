@@ -3,8 +3,8 @@
 
 # LocalSend paths
 localsend:
-  input_path: "C:\Users\seanr\Desktop\AI_Researcher\input"
-  output_path: "C:\Users\seanr\Desktop\AI_Researcher\output"
+  input_path: "C:/Users/seanr/Desktop/AI_Researcher/input"
+  output_path: "C:/Users/seanr/Desktop/AI_Researcher/output"
   check_interval: 300  # seconds
 
 # Ollama settings
