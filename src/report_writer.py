@@ -298,6 +298,9 @@ class ReportWriter:
         solution_count = len(set(item['solution'] for item in structured_data['solutions']))
         decision_maker_count = len(structured_data['decision_makers'])
         
+        # Get the number of cycles (it's already a number, not a list)
+        num_cycles = strategy.get('cycles', 3)
+        
         return f"""# {assignment['title']}
 
 **Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M')}  
@@ -338,7 +341,7 @@ Research identified **{company_count} Japanese tech companies** with English com
 
 {strategy['approach']}
 
-**Search Strategy**: Conducted {len(strategy.get('cycles', 3))} research cycles using diverse search queries including company-specific searches, employee review platforms, industry reports, and LinkedIn profiles.
+**Search Strategy**: Conducted {num_cycles} research cycles using diverse search queries including company-specific searches, employee review platforms, industry reports, and LinkedIn profiles.
 
 ## Sources
 
