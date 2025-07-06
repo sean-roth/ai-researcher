@@ -49,20 +49,37 @@ class WebResearcher:
                 # Perform search
                 search_results = await self.brave.search(q=query, count=10)
                 
-                # Extract URLs from search results
-                if hasattr(search_results, 'web_results') and search_results.web_results:
-                    for result in search_results.web_results[:8]:  # Take top 8 results
+                # Log the structure to debug
+                logger.debug(f"Search results type: {type(search_results)}")
+                
+                # Handle different response structures
+                if isinstance(search_results, dict):
+                    # If it's a dictionary, look for web results
+                    web_results = search_results.get('web', {}).get('results', [])
+                    logger.info(f"Found {len(web_results)} results in dictionary format")
+                    
+                    for result in web_results[:8]:
+                        urls.append({
+                            'url': result.get('url', ''),
+                            'title': result.get('title', ''),
+                            'description': result.get('description', '')
+                        })
+                elif hasattr(search_results, 'web_results'):
+                    # Original code for object-based response
+                    for result in search_results.web_results[:8]:
                         urls.append({
                             'url': result.url,
                             'title': result.title,
                             'description': result.description if hasattr(result, 'description') else ''
                         })
-                    logger.info(f"Found {len(urls)} results for query: {query}")
                 else:
-                    logger.warning("No web results found")
+                    logger.warning(f"Unexpected search results format: {type(search_results)}")
+                    urls = await self._get_fallback_urls(query)
+                
+                logger.info(f"Extracted {len(urls)} URLs for query: {query}")
                     
             except Exception as e:
-                logger.error(f"Brave Search error: {e}")
+                logger.error(f"Brave Search error: {e}", exc_info=True)
                 # Fall back to example URLs
                 urls = await self._get_fallback_urls(query)
         else:
@@ -72,10 +89,17 @@ class WebResearcher:
         # Crawl and analyze each URL
         async with AsyncWebCrawler(verbose=True) as crawler:
             for url_info in urls[:5]:  # Limit to 5 URLs per search to avoid overwhelming
+                if not url_info.get('url'):  # Skip if no URL
+                    continue
+                    
                 try:
                     logger.info(f"Crawling: {url_info['url']}")
-                    # Crawl the page
-                    result = await crawler.arun(url=url_info['url'])
+                    # Crawl the page with better settings for dynamic content
+                    result = await crawler.arun(
+                        url=url_info['url'],
+                        word_count_threshold=100,  # Minimum words to consider
+                        remove_overlay_elements=True  # Remove popups/overlays
+                    )
                     
                     if result.success and result.markdown:
                         # Use full content for evaluation (but cap at reasonable limit)
@@ -89,7 +113,10 @@ class WebResearcher:
                             url_info['title']
                         )
                         
-                        if relevance >= 6:
+                        # Lower threshold for known good sources
+                        threshold = 5 if 'glassdoor' in url_info['url'].lower() else 6
+                        
+                        if relevance >= threshold:
                             # Extract structured data from full content
                             extracted_data = await self.extract_structured_data(
                                 result.markdown[:15000],  # Use much more content
@@ -106,6 +133,7 @@ class WebResearcher:
                                     'content_length': content_length,
                                     'query': query
                                 })
+                                logger.info(f"Extracted findings from {url_info['url']}")
                             else:
                                 logger.info(f"No relevant findings in {url_info['url']}")
                         else:
@@ -118,17 +146,21 @@ class WebResearcher:
         
     async def quick_relevance_check(self, content: str, query: str, title: str) -> int:
         """Quick check if content is relevant to the query."""
+        # More lenient prompt for better relevance detection
         prompt = f"""
-        Rate how relevant this content is to the query "{query}" on a scale of 1-10:
+        Rate how relevant this content is to the query "{query}" on a scale of 1-10.
         
         Page title: {title}
         Content preview:
         {content[:1500]}
         
         Consider:
-        - Does it directly address the query topic?
-        - Is it substantive (not just navigation/ads)?
-        - Does it contain specific information (names, data, facts)?
+        - Does it mention topics related to the query?
+        - Could it potentially contain useful information?
+        - Is there actual content (not just navigation)?
+        
+        Be generous - if it might be relevant, score it 6 or higher.
+        Sites like Glassdoor, LinkedIn, Indeed are usually relevant for company research.
         
         Respond with just a number 1-10.
         """
@@ -178,6 +210,7 @@ class WebResearcher:
         - relevant_findings: true/false (whether any useful info was found)
         
         Be specific - include names, numbers, quotes. Don't summarize, extract.
+        If this looks like a search results page or job listing page, extract company names from the listings.
         """
         
         try:
@@ -213,23 +246,33 @@ class WebResearcher:
         """Get fallback URLs when Brave Search is not available."""
         logger.info("Using fallback URLs")
         
-        # Return some general URLs that might have relevant content
+        # More diverse fallback URLs
         if "japanese" in query.lower() or "japan" in query.lower():
             return [
                 {
-                    'url': "https://www.japan-dev.com/",
-                    'title': "Japan Dev - Tech Jobs in Japan",
-                    'description': "Resources for developers in Japan"
+                    'url': "https://www.tokyodev.com/companies/",
+                    'title': "Tech Companies in Tokyo - TokyoDev",
+                    'description': "List of technology companies in Tokyo"
                 },
                 {
-                    'url': "https://www.tokyodev.com/",
-                    'title': "TokyoDev - Developer Jobs in Tokyo",
-                    'description': "Tokyo developer community and job board"
+                    'url': "https://www.japan-dev.com/companies",
+                    'title': "Japan Dev - Tech Companies",
+                    'description': "Japanese tech companies hiring developers"
                 },
                 {
-                    'url': "https://www.glassdoor.com/Reviews/japan-tech-company-reviews-SRCH_IL.0,5_IN123_KE6,10.htm",
-                    'title': "Tech Company Reviews in Japan - Glassdoor",
-                    'description': "Employee reviews of tech companies in Japan"
+                    'url': "https://www.glassdoor.com/Reviews/japan-reviews-SRCH_IL.0,5_IN123.htm",
+                    'title': "Companies in Japan Reviews - Glassdoor",
+                    'description': "Employee reviews of companies in Japan"
+                },
+                {
+                    'url': "https://www.linkedin.com/jobs/english-jobs-japan/",
+                    'title': "English Jobs in Japan - LinkedIn",
+                    'description': "Jobs requiring English in Japan"
+                },
+                {
+                    'url': "https://resources.realestate.co.jp/living/10-major-companies-in-japan/",
+                    'title': "10 Major Companies in Japan",
+                    'description': "Overview of major Japanese companies"
                 }
             ]
         else:
