@@ -35,7 +35,7 @@ def check_requirements():
             print("✅ Dolphin model available")
         else:
             print("⚠️  Dolphin model not found")
-            print("   Run: ollama pull dolphin-llama3:8b")
+            print("   Run: ollama pull dolphin3:latest")
             return False
     except:
         pass
