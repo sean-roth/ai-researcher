@@ -21,13 +21,14 @@ class ResearchEngine:
     
     def __init__(self, config_path: str = "config.yaml"):
         """Initialize the research engine with configuration."""
+        self.config_path = config_path
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
             
         self.ollama = AsyncClient(
             host=f"{self.config['ollama']['host']}:{self.config['ollama']['port']}"
         )
-        self.web_researcher = WebResearcher()
+        self.web_researcher = WebResearcher(config_path)
         self.report_writer = ReportWriter()
         self.checkpoint_data = {}
         
