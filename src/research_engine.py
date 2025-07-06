@@ -114,8 +114,14 @@ class ResearchEngine:
         # Generate search queries based on strategy and previous findings
         queries = await self.generate_queries(strategy, previous_findings)
         
-        # Execute searches
-        for query in queries[:5]:  # Limit queries per cycle
+        # Execute searches with rate limiting
+        for i, query in enumerate(queries[:5]):  # Limit queries per cycle
+            if i > 0:
+                # Wait 1.1 seconds between searches to respect Brave's rate limit
+                logger.info("Waiting 1.1 seconds for rate limit...")
+                await asyncio.sleep(1.1)
+                
+            logger.info(f"Searching for: {query}")
             results = await self.web_researcher.search_and_analyze(
                 query, 
                 strategy['priority_sources']
