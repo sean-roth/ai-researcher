@@ -5,16 +5,10 @@ import logging
 from typing import Dict, List, Optional
 import yaml
 import json
+import httpx
 
 from crawl4ai import AsyncWebCrawler
 from ollama import AsyncClient
-
-try:
-    from brave import AsyncBrave
-    BRAVE_AVAILABLE = True
-except ImportError:
-    BRAVE_AVAILABLE = False
-    logging.warning("brave-search not installed. Install with: pip install brave-search")
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +24,64 @@ class WebResearcher:
         self.ollama = AsyncClient()
         self.model = self.config['ollama']['model']  # Get model from config
         
-        # Initialize Brave Search if available and configured
-        if BRAVE_AVAILABLE and 'brave_search' in self.config and self.config['brave_search'].get('api_key'):
-            self.brave = AsyncBrave(api_key=self.config['brave_search']['api_key'])
-            logger.info("Brave Search initialized successfully")
+        # Store API key for direct requests
+        self.brave_api_key = self.config.get('brave_search', {}).get('api_key')
+        if self.brave_api_key and self.brave_api_key != 'YOUR_ACTUAL_BRAVE_API_KEY_HERE':
+            logger.info("Brave Search API key configured")
         else:
-            self.brave = None
-            logger.warning("Brave Search not available - using fallback URLs")
+            self.brave_api_key = None
+            logger.warning("Brave Search not configured - using fallback URLs")
+        
+    async def search_brave_direct(self, query: str, count: int = 10) -> List[Dict]:
+        """Make direct HTTP request to Brave Search API to avoid validation issues."""
+        if not self.brave_api_key:
+            return []
+            
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://api.search.brave.com/res/v1/web/search",
+                    params={
+                        "q": query,
+                        "count": count,
+                        "offset": 0,
+                        "safesearch": "moderate",
+                        "freshness": "pw"  # Past week for recent content
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Subscription-Token": self.brave_api_key
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    urls = []
+                    
+                    # Extract web results
+                    web_results = data.get('web', {}).get('results', [])
+                    logger.info(f"Brave Search returned {len(web_results)} results")
+                    
+                    for result in web_results[:count]:
+                        # Ensure URL has protocol
+                        url = result.get('url', '')
+                        if url and not url.startswith(('http://', 'https://')):
+                            url = f"https://{url}"
+                            
+                        urls.append({
+                            'url': url,
+                            'title': result.get('title', ''),
+                            'description': result.get('description', '')
+                        })
+                    
+                    return urls
+                else:
+                    logger.error(f"Brave Search API error: {response.status_code}")
+                    return []
+                    
+        except Exception as e:
+            logger.error(f"Brave Search request error: {e}")
+            return []
         
     async def search_and_analyze(self, query: str, priority_sources: List[str]) -> List[Dict]:
         """Search the web and analyze results."""
@@ -44,43 +89,10 @@ class WebResearcher:
         urls = []
         
         # Try to search with Brave
-        if self.brave:
-            try:
-                # Perform search
-                search_results = await self.brave.search(q=query, count=10)
-                
-                # Log the structure to debug
-                logger.debug(f"Search results type: {type(search_results)}")
-                
-                # Handle different response structures
-                if isinstance(search_results, dict):
-                    # If it's a dictionary, look for web results
-                    web_results = search_results.get('web', {}).get('results', [])
-                    logger.info(f"Found {len(web_results)} results in dictionary format")
-                    
-                    for result in web_results[:8]:
-                        urls.append({
-                            'url': result.get('url', ''),
-                            'title': result.get('title', ''),
-                            'description': result.get('description', '')
-                        })
-                elif hasattr(search_results, 'web_results'):
-                    # Original code for object-based response
-                    for result in search_results.web_results[:8]:
-                        urls.append({
-                            'url': result.url,
-                            'title': result.title,
-                            'description': result.description if hasattr(result, 'description') else ''
-                        })
-                else:
-                    logger.warning(f"Unexpected search results format: {type(search_results)}")
-                    urls = await self._get_fallback_urls(query)
-                
-                logger.info(f"Extracted {len(urls)} URLs for query: {query}")
-                    
-            except Exception as e:
-                logger.error(f"Brave Search error: {e}", exc_info=True)
-                # Fall back to example URLs
+        if self.brave_api_key:
+            urls = await self.search_brave_direct(query, count=8)
+            if not urls:
+                logger.warning("Brave Search returned no results, using fallback")
                 urls = await self._get_fallback_urls(query)
         else:
             # Use fallback URLs if Brave Search not available
@@ -114,7 +126,8 @@ class WebResearcher:
                         )
                         
                         # Lower threshold for known good sources
-                        threshold = 5 if 'glassdoor' in url_info['url'].lower() else 6
+                        threshold = 5 if any(site in url_info['url'].lower() 
+                                           for site in ['glassdoor', 'linkedin', 'indeed', 'tokyodev']) else 6
                         
                         if relevance >= threshold:
                             # Extract structured data from full content
@@ -183,34 +196,42 @@ class WebResearcher:
     async def extract_structured_data(self, content: str, query: str, url: str) -> Dict:
         """Extract structured data from the content."""
         prompt = f"""
-        Extract specific, factual information from this content related to: "{query}"
+        You are a research assistant extracting specific information about Japanese tech companies and English training.
         
-        Content:
-        {content}
+        From this content, extract ANY mentions of:
+        1. Company names (especially Japanese ones like Rakuten, Mercari, LINE, etc.)
+        2. English language challenges in the workplace
+        3. Corporate training programs or English learning solutions
+        4. Names and job titles of HR or training professionals
+        5. Information about global expansion or international offices
+        6. Employee comments about English or language barriers
+        7. Budget or investment in English training
+        8. Dates or timelines
         
-        Extract the following (if available):
-        1. Company names mentioned (especially Japanese tech companies)
-        2. Specific English challenges or pain points mentioned
-        3. Training programs or solutions currently used
-        4. Names and titles of decision makers (HR, Training, L&D)
-        5. Recent expansions or global initiatives
-        6. Employee quotes or testimonials about English
-        7. Budget information or training investments
-        8. Specific dates or timelines
+        Content to analyze:
+        {content[:10000]}
         
-        Return as JSON with these keys:
-        - companies: [list of company names with context]
-        - english_challenges: [specific challenges mentioned]
-        - current_solutions: [training programs or tools mentioned]
-        - decision_makers: [names and titles]
-        - expansion_info: [global expansion details]
-        - employee_feedback: [quotes or feedback]
-        - budget_info: [any financial information]
-        - key_insights: [2-3 specific, actionable insights]
-        - relevant_findings: true/false (whether any useful info was found)
+        Instructions:
+        - Extract ACTUAL information from the content, not generic statements
+        - Include specific names, numbers, quotes when available
+        - If this is a job listing page, extract company names from the listings
+        - If this is a review site, extract company names and employee feedback
         
-        Be specific - include names, numbers, quotes. Don't summarize, extract.
-        If this looks like a search results page or job listing page, extract company names from the listings.
+        Return a JSON object with these exact keys:
+        {{
+            "companies": ["list of company names found, with brief context"],
+            "english_challenges": ["specific challenges mentioned"],
+            "current_solutions": ["training programs or tools mentioned"],
+            "decision_makers": ["names and titles found"],
+            "expansion_info": ["global expansion details"],
+            "employee_feedback": ["quotes or comments about English"],
+            "budget_info": ["financial information"],
+            "key_insights": ["2-3 specific insights from this content"],
+            "relevant_findings": true/false
+        }}
+        
+        Set relevant_findings to true if you found ANY useful information.
+        If the content has no relevant information, return all empty arrays and set relevant_findings to false.
         """
         
         try:
@@ -222,7 +243,17 @@ class WebResearcher:
             
             # Parse JSON response
             try:
-                extracted = json.loads(response['response'])
+                # Clean up the response - sometimes LLMs add extra text
+                response_text = response['response'].strip()
+                # Find JSON in the response
+                if '{' in response_text and '}' in response_text:
+                    start = response_text.find('{')
+                    end = response_text.rfind('}') + 1
+                    json_text = response_text[start:end]
+                    extracted = json.loads(json_text)
+                else:
+                    extracted = json.loads(response_text)
+                
                 # Ensure we have the relevant_findings flag
                 if 'relevant_findings' not in extracted:
                     # Check if we found anything useful
@@ -233,9 +264,17 @@ class WebResearcher:
                         extracted.get('decision_makers')
                     ])
                     extracted['relevant_findings'] = has_findings
+                
+                # Log what we found
+                if extracted['relevant_findings']:
+                    logger.info(f"Extracted from {url}: {len(extracted.get('companies', []))} companies, "
+                               f"{len(extracted.get('english_challenges', []))} challenges")
+                
                 return extracted
-            except json.JSONDecodeError:
-                logger.error(f"Failed to parse JSON extraction from {url}")
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON extraction from {url}: {e}")
+                logger.error(f"Raw response: {response['response'][:200]}...")
                 return {'relevant_findings': False}
                 
         except Exception as e:
