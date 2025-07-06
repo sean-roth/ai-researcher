@@ -28,6 +28,7 @@ class WebResearcher:
             self.config = yaml.safe_load(f)
             
         self.ollama = AsyncClient()
+        self.model = self.config['ollama']['model']  # Get model from config
         
         # Initialize Brave Search if available and configured
         if BRAVE_AVAILABLE and 'brave_search' in self.config and self.config['brave_search'].get('api_key'):
@@ -134,7 +135,7 @@ class WebResearcher:
         
         try:
             response = await self.ollama.generate(
-                model='dolphin3:latest',
+                model=self.model,
                 prompt=prompt
             )
             
@@ -181,7 +182,7 @@ class WebResearcher:
         
         try:
             response = await self.ollama.generate(
-                model='dolphin3:latest',
+                model=self.model,
                 prompt=prompt,
                 options={'temperature': 0.3}  # Lower temperature for more factual extraction
             )
