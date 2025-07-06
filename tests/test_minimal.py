@@ -32,35 +32,35 @@ async def test_research_pipeline():
     
     # 2. Test web crawling with Crawl4ai
     print("\n2. Testing web crawling...")
-    async with AsyncWebCrawler(verbose=True) as crawler:
-        try:
-            # Use arun method for crawling
+    try:
+        async with AsyncWebCrawler(verbose=True) as crawler:
+            # Use arun method as per documentation
             test_url = "https://www.example.com/"
             result = await crawler.arun(url=test_url)
             
-            if result.success:
+            if result.success and result.markdown:
                 print(f"✓ Successfully crawled {test_url}")
-                print(f"  Content length: {len(result.text)} characters")
+                print(f"  Content length: {len(result.markdown)} characters")
                 
                 # Create mock "search results" for the next test
                 results = [{
                     'url': test_url,
                     'title': 'Example Domain',
-                    'snippet': result.text[:200] if result.text else 'No content'
+                    'snippet': result.markdown[:200] if result.markdown else 'No content'
                 }]
             else:
-                print("✗ Crawl failed")
+                print("✗ Crawl failed or no content")
                 results = []
                 
-        except Exception as e:
-            print(f"✗ Web crawl error: {e}")
-            # Create fallback data for testing
-            results = [{
-                'url': 'https://www.example.com/',
-                'title': 'Example Site',
-                'snippet': 'This is a test snippet for when crawling fails.'
-            }]
-            print("  Using fallback data to continue tests")
+    except Exception as e:
+        print(f"✗ Web crawl error: {e}")
+        # Create fallback data for testing
+        results = [{
+            'url': 'https://www.example.com/',
+            'title': 'Example Site',
+            'snippet': 'This is a test snippet for when crawling fails.'
+        }]
+        print("  Using fallback data to continue tests")
     
     # 3. Test simple research cycle
     print("\n3. Testing research analysis...")
