@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 import yaml
+import json
 
 from crawl4ai import AsyncWebCrawler
 from ollama import AsyncClient
@@ -49,7 +50,7 @@ class WebResearcher:
                 
                 # Extract URLs from search results
                 if hasattr(search_results, 'web_results') and search_results.web_results:
-                    for result in search_results.web_results[:5]:  # Take top 5
+                    for result in search_results.web_results[:8]:  # Take top 8 results
                         urls.append({
                             'url': result.url,
                             'title': result.title,
@@ -69,53 +70,64 @@ class WebResearcher:
             
         # Crawl and analyze each URL
         async with AsyncWebCrawler(verbose=True) as crawler:
-            for url_info in urls:
+            for url_info in urls[:5]:  # Limit to 5 URLs per search to avoid overwhelming
                 try:
+                    logger.info(f"Crawling: {url_info['url']}")
                     # Crawl the page
                     result = await crawler.arun(url=url_info['url'])
                     
                     if result.success and result.markdown:
-                        # Evaluate if content is relevant
-                        quality = await self.evaluate_content(
-                            result.markdown[:1000], 
+                        # Use full content for evaluation (but cap at reasonable limit)
+                        content_length = len(result.markdown)
+                        logger.info(f"Crawled {content_length} characters from {url_info['url']}")
+                        
+                        # First quick relevance check on preview
+                        relevance = await self.quick_relevance_check(
+                            result.markdown[:3000], 
                             query,
                             url_info['title']
                         )
                         
-                        if quality >= 7:
-                            # Extract insights
-                            insight = await self.extract_insight(
-                                result.markdown[:2000], 
-                                query
+                        if relevance >= 6:
+                            # Extract structured data from full content
+                            extracted_data = await self.extract_structured_data(
+                                result.markdown[:15000],  # Use much more content
+                                query,
+                                url_info['url']
                             )
                             
-                            findings.append({
-                                'url': url_info['url'],
-                                'title': url_info['title'],
-                                'quality_score': quality,
-                                'key_insight': insight,
-                                'relevant_text': result.markdown[:500],
-                                'query': query
-                            })
+                            if extracted_data and extracted_data.get('relevant_findings'):
+                                findings.append({
+                                    'url': url_info['url'],
+                                    'title': url_info['title'],
+                                    'quality_score': relevance,
+                                    'extracted_data': extracted_data,
+                                    'content_length': content_length,
+                                    'query': query
+                                })
+                            else:
+                                logger.info(f"No relevant findings in {url_info['url']}")
+                        else:
+                            logger.info(f"Content not relevant enough: {url_info['url']} (score: {relevance})")
                             
                 except Exception as e:
                     logger.error(f"Error crawling {url_info['url']}: {e}")
                     
         return findings
         
-    async def evaluate_content(self, content: str, query: str, title: str) -> int:
-        """Evaluate if content is relevant to the query."""
+    async def quick_relevance_check(self, content: str, query: str, title: str) -> int:
+        """Quick check if content is relevant to the query."""
         prompt = f"""
         Rate how relevant this content is to the query "{query}" on a scale of 1-10:
         
         Page title: {title}
         Content preview:
-        {content[:500]}
+        {content[:1500]}
         
         Consider:
         - Does it directly address the query topic?
-        - Is it informative and substantive?
-        - Is it from a credible source?
+        - Is it substantive (not just navigation/ads)?
+        - Does it contain specific information (names, data, facts)?
         
         Respond with just a number 1-10.
         """
@@ -135,28 +147,66 @@ class WebResearcher:
             logger.error(f"Error evaluating content: {e}")
             return 5  # Default middle score
             
-    async def extract_insight(self, content: str, query: str) -> str:
-        """Extract a key insight from the content."""
+    async def extract_structured_data(self, content: str, query: str, url: str) -> Dict:
+        """Extract structured data from the content."""
         prompt = f"""
-        Based on this content about '{query}':
+        Extract specific, factual information from this content related to: "{query}"
         
-        {content[:1500]}
+        Content:
+        {content}
         
-        Provide one key insight (1-2 sentences) that would be valuable for research.
-        Be specific and actionable.
+        Extract the following (if available):
+        1. Company names mentioned (especially Japanese tech companies)
+        2. Specific English challenges or pain points mentioned
+        3. Training programs or solutions currently used
+        4. Names and titles of decision makers (HR, Training, L&D)
+        5. Recent expansions or global initiatives
+        6. Employee quotes or testimonials about English
+        7. Budget information or training investments
+        8. Specific dates or timelines
+        
+        Return as JSON with these keys:
+        - companies: [list of company names with context]
+        - english_challenges: [specific challenges mentioned]
+        - current_solutions: [training programs or tools mentioned]
+        - decision_makers: [names and titles]
+        - expansion_info: [global expansion details]
+        - employee_feedback: [quotes or feedback]
+        - budget_info: [any financial information]
+        - key_insights: [2-3 specific, actionable insights]
+        - relevant_findings: true/false (whether any useful info was found)
+        
+        Be specific - include names, numbers, quotes. Don't summarize, extract.
         """
         
         try:
             response = await self.ollama.generate(
                 model='dolphin3:latest',
-                prompt=prompt
+                prompt=prompt,
+                options={'temperature': 0.3}  # Lower temperature for more factual extraction
             )
             
-            return response['response'].strip()
-            
+            # Parse JSON response
+            try:
+                extracted = json.loads(response['response'])
+                # Ensure we have the relevant_findings flag
+                if 'relevant_findings' not in extracted:
+                    # Check if we found anything useful
+                    has_findings = any([
+                        extracted.get('companies'),
+                        extracted.get('english_challenges'),
+                        extracted.get('current_solutions'),
+                        extracted.get('decision_makers')
+                    ])
+                    extracted['relevant_findings'] = has_findings
+                return extracted
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse JSON extraction from {url}")
+                return {'relevant_findings': False}
+                
         except Exception as e:
-            logger.error(f"Error extracting insight: {e}")
-            return "Unable to extract clear insight from this source"
+            logger.error(f"Error extracting structured data: {e}")
+            return {'relevant_findings': False}
             
     async def _get_fallback_urls(self, query: str) -> List[Dict]:
         """Get fallback URLs when Brave Search is not available."""
@@ -174,6 +224,11 @@ class WebResearcher:
                     'url': "https://www.tokyodev.com/",
                     'title': "TokyoDev - Developer Jobs in Tokyo",
                     'description': "Tokyo developer community and job board"
+                },
+                {
+                    'url': "https://www.glassdoor.com/Reviews/japan-tech-company-reviews-SRCH_IL.0,5_IN123_KE6,10.htm",
+                    'title': "Tech Company Reviews in Japan - Glassdoor",
+                    'description': "Employee reviews of tech companies in Japan"
                 }
             ]
         else:
