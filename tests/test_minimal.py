@@ -21,7 +21,7 @@ async def test_research_pipeline():
         ollama = AsyncClient()
         test_prompt = "What makes a good research question? Answer in one sentence."
         response = await ollama.generate(
-            model='dolphin-llama3:8b',
+            model='dolphin3:latest',
             prompt=test_prompt
         )
         print(f"✓ Ollama working: {response['response'].strip()}")
@@ -63,7 +63,7 @@ async def test_research_pipeline():
         """
         
         analysis = await ollama.generate(
-            model='dolphin-llama3:8b',
+            model='dolphin3:latest',
             prompt=research_prompt
         )
         print("✓ Analysis generated:")
