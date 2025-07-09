@@ -39,11 +39,17 @@ class Aria:
     """Main Aria assistant class."""
     
     def __init__(self, voice_enabled=False, voice_accent="default", hybrid_mode=False):
+        # Initialize state variables FIRST
+        self.is_researching = False
+        self.muted = False
+        self.research_history = self._load_history()
+        
+        # Then initialize components
         self.personality = AriaPersonality()
         self.templates = QuickTemplates()
         self.research_integration = AriaResearchIntegration('config.yaml')
         
-        # Voice setup
+        # Voice setup LAST (after state variables)
         self.voice_enabled = voice_enabled
         self.hybrid_mode = hybrid_mode
         self.voice = None
@@ -54,11 +60,6 @@ class Aria:
             except Exception as e:
                 self.output(f"Voice initialization failed: {e}", style="error")
                 self.voice_enabled = False
-        
-        # State
-        self.is_researching = False
-        self.muted = False
-        self.research_history = self._load_history()
         
     def output(self, text: str, style: str = "default", speak: bool = True):
         """Output text with optional voice."""
