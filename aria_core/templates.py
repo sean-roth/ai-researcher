@@ -3,6 +3,7 @@ Quick research templates for common tasks.
 """
 
 from typing import Dict, Optional
+import re
 
 
 class QuickTemplates:
@@ -66,6 +67,40 @@ class QuickTemplates:
             }
         }
     
+    def parse_number_from_text(self, text: str) -> int:
+        """Parse numbers from natural language."""
+        text = text.lower().strip()
+        
+        # Direct number words
+        word_to_num = {
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'eleven': 11, 'twelve': 12, 'fifteen': 15, 'twenty': 20,
+            'thirty': 30, 'forty': 40, 'fifty': 50,
+            'hundred': 100, 'thousand': 1000
+        }
+        
+        # Check for word numbers
+        for word, num in word_to_num.items():
+            if word in text:
+                # Handle "a hundred", "a thousand"
+                if 'a ' + word in text:
+                    return num
+                return num
+        
+        # Try to extract numeric digits
+        numbers = re.findall(r'\d+', text)
+        if numbers:
+            return int(numbers[0])
+        
+        # Default based on context
+        if 'all' in text or 'many' in text:
+            return 20
+        elif 'few' in text:
+            return 5
+        else:
+            return 10  # default
+    
     async def quick_research(self, template_name: str, aria_instance):
         """Execute a quick research template."""
         if template_name not in self.templates:
@@ -88,7 +123,16 @@ class QuickTemplates:
         answers = []
         for question in template['questions']:
             aria_instance.output(question, style="aria")
-            answer = input("You: ").strip()
+            
+            # Get answer - use voice if enabled
+            if aria_instance.voice_enabled and aria_instance.voice:
+                answer = await aria_instance.voice.listen(timeout=7.0)  # Longer timeout
+                if not answer:
+                    aria_instance.output("I didn't catch that. Let me ask again.", style="aria")
+                    answer = await aria_instance.voice.listen(timeout=7.0)
+            else:
+                answer = input("You: ").strip()
+            
             if answer:
                 answers.append(answer)
         
@@ -132,28 +176,46 @@ class QuickTemplates:
         """Specialized interview for company research."""
         aria_instance.output("Company research - let me understand what you need.", style="aria")
         
-        # Key questions
-        aria_instance.output("What type of companies? (e.g., Japanese tech, US startups)", style="aria")
-        company_type = input("You: ").strip()
+        # Key questions - now with voice support
+        questions = [
+            ("What type of companies? (e.g., Japanese tech, US startups)", "company_type"),
+            ("Company size? (e.g., 50-500, enterprise, any)", "company_size"),
+            ("What specific information do you need? (pricing/contacts/challenges/all)", "specifics"),
+            ("How many companies should I find?", "count")
+        ]
         
-        aria_instance.output("Company size? (e.g., 50-500, enterprise, any)", style="aria")
-        company_size = input("You: ").strip()
+        answers = {}
         
-        aria_instance.output("What specific information do you need? (pricing/contacts/challenges/all)", style="aria")
-        specifics = input("You: ").strip()
+        for question, key in questions:
+            aria_instance.output(question, style="aria")
+            
+            # Get answer with voice support
+            if aria_instance.voice_enabled and aria_instance.voice:
+                answer = await aria_instance.voice.listen(timeout=7.0)
+                if not answer:
+                    aria_instance.output("I didn't catch that. Let me ask again.", style="aria")
+                    answer = await aria_instance.voice.listen(timeout=7.0)
+            else:
+                answer = input("You: ").strip()
+            
+            answers[key] = answer
         
-        aria_instance.output("How many companies should I find?", style="aria") 
-        count = input("You: ").strip()
+        # Parse count with natural language support
+        try:
+            count = self.parse_number_from_text(answers.get('count', '10'))
+        except:
+            count = 10
+            aria_instance.output(f"I'll find {count} companies.", style="aria")
         
         # Build assignment
         assignment = {
-            'title': f"Company Research: {company_type}",
+            'title': f"Company Research: {answers.get('company_type', 'companies')}",
             'objectives': [
-                f"Find {count} {company_type} companies",
-                f"Company size: {company_size}",
-                f"Focus on: {specifics}"
+                f"Find {count} {answers.get('company_type', '')} companies",
+                f"Company size: {answers.get('company_size', 'any')}",
+                f"Focus on: {answers.get('specifics', 'all information')}"
             ],
-            'depth': 'comprehensive' if int(count) < 50 else 'balanced',
+            'depth': 'comprehensive' if count < 50 else 'balanced',
             'priority': 'normal'
         }
         
@@ -171,25 +233,35 @@ class QuickTemplates:
         """Specialized interview for grant research."""
         aria_instance.output("Grant research - I'll help you find funding opportunities.", style="aria")
         
-        aria_instance.output("What's your business focus?", style="aria")
-        focus = input("You: ").strip()
+        questions = [
+            ("What's your business focus?", "focus"),
+            ("Your location? (city, state/country)", "location"),
+            ("Company stage? (pre-revenue, seed, growth, etc.)", "stage"),
+            ("Any specific focus areas? (R&D, hiring, equipment, etc.)", "areas")
+        ]
         
-        aria_instance.output("Your location? (city, state/country)", style="aria")
-        location = input("You: ").strip()
+        answers = {}
         
-        aria_instance.output("Company stage? (pre-revenue, seed, growth, etc.)", style="aria")
-        stage = input("You: ").strip()
-        
-        aria_instance.output("Any specific focus areas? (R&D, hiring, equipment, etc.)", style="aria")
-        areas = input("You: ").strip()
+        for question, key in questions:
+            aria_instance.output(question, style="aria")
+            
+            if aria_instance.voice_enabled and aria_instance.voice:
+                answer = await aria_instance.voice.listen(timeout=7.0)
+                if not answer:
+                    aria_instance.output("I didn't catch that. Let me ask again.", style="aria")
+                    answer = await aria_instance.voice.listen(timeout=7.0)
+            else:
+                answer = input("You: ").strip()
+                
+            answers[key] = answer
         
         assignment = {
-            'title': f"Grant Research: {focus}",
+            'title': f"Grant Research: {answers.get('focus', 'business')}",
             'objectives': [
-                f"Find grants for {focus} businesses",
-                f"Available in {location}",
-                f"For {stage} stage companies",
-                f"Focus on {areas} grants" if areas else "All types of grants"
+                f"Find grants for {answers.get('focus', 'business')} businesses",
+                f"Available in {answers.get('location', 'any location')}",
+                f"For {answers.get('stage', 'any')} stage companies",
+                f"Focus on {answers.get('areas', 'all types')} grants" if answers.get('areas') else "All types of grants"
             ],
             'depth': 'comprehensive',
             'priority': 'high'
@@ -201,30 +273,40 @@ class QuickTemplates:
         """Specialized interview for people/decision maker research."""
         aria_instance.output("Looking for specific people - let me get the details.", style="aria")
         
-        aria_instance.output("What roles/titles? (e.g., HR Director, CTO, etc.)", style="aria")
-        roles = input("You: ").strip()
+        questions = [
+            ("What roles/titles? (e.g., HR Director, CTO, etc.)", "roles"),
+            ("At what types of companies?", "companies"),
+            ("Geographic focus? (any, specific city/country)", "geography"),
+            ("Any other criteria? (company size, industry, etc.)", "criteria")
+        ]
         
-        aria_instance.output("At what types of companies?", style="aria")
-        companies = input("You: ").strip()
+        answers = {}
         
-        aria_instance.output("Geographic focus? (any, specific city/country)", style="aria")
-        geography = input("You: ").strip()
-        
-        aria_instance.output("Any other criteria? (company size, industry, etc.)", style="aria")
-        criteria = input("You: ").strip()
+        for question, key in questions:
+            aria_instance.output(question, style="aria")
+            
+            if aria_instance.voice_enabled and aria_instance.voice:
+                answer = await aria_instance.voice.listen(timeout=7.0)
+                if not answer:
+                    aria_instance.output("I didn't catch that. Let me ask again.", style="aria")
+                    answer = await aria_instance.voice.listen(timeout=7.0)
+            else:
+                answer = input("You: ").strip()
+                
+            answers[key] = answer
         
         assignment = {
-            'title': f"Decision Maker Research: {roles}",
+            'title': f"Decision Maker Research: {answers.get('roles', 'people')}",
             'objectives': [
-                f"Find {roles}",
-                f"At {companies}",
-                f"Located in {geography}"
+                f"Find {answers.get('roles', 'decision makers')}",
+                f"At {answers.get('companies', 'companies')}",
+                f"Located in {answers.get('geography', 'any location')}"
             ],
             'depth': 'comprehensive',
             'priority': 'normal'
         }
         
-        if criteria:
-            assignment['objectives'].append(f"Additional criteria: {criteria}")
+        if answers.get('criteria'):
+            assignment['objectives'].append(f"Additional criteria: {answers['criteria']}")
             
         return assignment
