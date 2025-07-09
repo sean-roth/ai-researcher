@@ -109,7 +109,22 @@ class AriaVoice:
             # Configure voice
             voices = self.tts_engine.getProperty('voices')
             
-            # Try to find accent-appropriate voice
+            # Try to find a female voice
+            female_voice_found = False
+            for i, voice in enumerate(voices):
+                # Common female voice indicators
+                if any(indicator in voice.name.lower() for indicator in ['female', 'zira', 'hazel', 'susan', 'linda', 'karen']):
+                    self.tts_engine.setProperty('voice', voice.id)
+                    female_voice_found = True
+                    print(f"Using voice: {voice.name}")
+                    break
+            
+            # If no female voice found, try voice index 1 (often female on Windows)
+            if not female_voice_found and len(voices) > 1:
+                self.tts_engine.setProperty('voice', voices[1].id)
+                print(f"Using voice: {voices[1].name}")
+            
+            # Try accent-specific voices
             if self.accent == 'irish' and any('irish' in v.name.lower() or 'moira' in v.name.lower() for v in voices):
                 for voice in voices:
                     if 'irish' in voice.name.lower() or 'moira' in voice.name.lower():
@@ -152,16 +167,16 @@ class AriaVoice:
             print(f"TTS error: {e}")
             print(f"[TTS Failed] Aria says: {text}")
     
-    async def listen(self, timeout: float = 5.0) -> Optional[str]:
+    async def listen(self, timeout: float = 7.0) -> Optional[str]:
         """Listen for voice input and return transcribed text."""
         if not AUDIO_AVAILABLE or not self.stt_model:
             # Fallback to text input
-            return input("You (type): ").strip()
+            return input("You: ").strip()
         
         print("Listening... (speak now)")
         
         try:
-            # Record audio
+            # Record audio with longer timeout
             duration = timeout
             recording = sd.rec(
                 int(duration * self.sample_rate),
@@ -171,23 +186,45 @@ class AriaVoice:
             )
             sd.wait()
             
-            # Check if we got any audio
-            if np.abs(recording).max() < 0.001:
+            # Check if we got any significant audio
+            audio_level = np.abs(recording).max()
+            if audio_level < 0.002:  # Lower threshold for better detection
                 print("No audio detected")
                 return None
+            
+            # Normalize audio to improve recognition
+            if audio_level < 0.1:  # Quiet audio
+                recording = recording / audio_level * 0.1
             
             # Transcribe with Whisper
             print("Processing speech...")
             result = self.stt_model.transcribe(
                 recording.flatten(),
                 language='en',
-                fp16=False  # Use FP32 for CPU
+                fp16=False,  # Use FP32 for CPU
+                temperature=0.0,  # Less creative, more accurate
+                suppress_tokens=[-1],  # Reduce hallucinations
+                condition_on_previous_text=False  # Don't use context that might cause weird outputs
             )
             
             text = result['text'].strip()
-            if text:
-                print(f"You said: {text}")
-                return text
+            
+            # Filter out common Whisper hallucinations
+            hallucination_patterns = [
+                "thank you", "thanks for watching", "subscribe",
+                "sex", "xxx", "...", "bye", "goodbye"
+            ]
+            
+            # Check if it's likely a hallucination
+            if text and len(text) > 3:  # Minimum viable input
+                text_lower = text.lower()
+                # If the entire text is just hallucination patterns, ignore it
+                if not any(pattern == text_lower for pattern in hallucination_patterns):
+                    print(f"You said: {text}")
+                    return text
+                else:
+                    print("(Filtered out likely hallucination)")
+                    return None
             else:
                 return None
                 
@@ -238,7 +275,10 @@ class AriaVoice:
                         result = self.stt_model.transcribe(
                             audio_data.flatten(),
                             language='en',
-                            fp16=False
+                            fp16=False,
+                            temperature=0.0,
+                            suppress_tokens=[-1],
+                            condition_on_previous_text=False
                         )
                         
                         text = result['text'].strip().lower()
@@ -253,7 +293,7 @@ class AriaVoice:
                             self.audio_queue.queue.clear()
                             
                             # Get the actual command
-                            command = await self.listen(timeout=5.0)
+                            command = await self.listen(timeout=7.0)
                             
                             if command and callback:
                                 await callback(command)
@@ -294,7 +334,13 @@ class AriaVoice:
             sd.wait()
             
             # Transcribe
-            result = self.stt_model.transcribe(recording.flatten(), fp16=False)
+            result = self.stt_model.transcribe(
+                recording.flatten(), 
+                fp16=False,
+                temperature=0.0,
+                suppress_tokens=[-1],
+                condition_on_previous_text=False
+            )
             text = result['text'].strip()
             
             if text:
