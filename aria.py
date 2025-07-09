@@ -19,12 +19,14 @@ from src.research_engine import ResearchEngine
 from aria_core.aria_personality import AriaPersonality
 from aria_core.aria_voice import AriaVoice
 from aria_core.templates import QuickTemplates
+from aria_core.research_integration import AriaResearchIntegration
 
 try:
     from rich.console import Console
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
     from rich.panel import Panel
     from rich.table import Table
+    from rich.live import Live
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
@@ -39,7 +41,7 @@ class Aria:
     def __init__(self, voice_enabled=False, voice_accent="default", hybrid_mode=False):
         self.personality = AriaPersonality()
         self.templates = QuickTemplates()
-        self.research_engine = ResearchEngine('config.yaml')
+        self.research_integration = AriaResearchIntegration('config.yaml')
         
         # Voice setup
         self.voice_enabled = voice_enabled
@@ -70,17 +72,21 @@ class Aria:
                 console.print(f"[red]✗ {text}[/red]")
             elif style == "aria":
                 console.print(f"[cyan]Aria:[/cyan] {text}")
+            elif style == "observation":
+                console.print(f"[yellow]💡 Aria:[/yellow] [italic]{text}[/italic]")
             else:
                 console.print(text)
         else:
             if style == "aria":
                 print(f"Aria: {text}")
+            elif style == "observation":
+                print(f"💡 Aria: {text}")
             else:
                 print(text)
         
         # Voice output
         if self.voice_enabled and speak and not self.muted and self.voice:
-            if style == "aria" or (self.hybrid_mode and style in ["info", "success"]):
+            if style in ["aria", "observation"] or (self.hybrid_mode and style in ["info", "success"]):
                 self.voice.speak(text)
     
     def show_help(self):
@@ -159,7 +165,8 @@ TIPS:
     
     async def conversation_mode(self):
         """Interactive conversation mode."""
-        self.personality.greet()
+        greeting = self.personality.greet()
+        self.output(greeting, style="aria")
         
         while True:
             try:
@@ -262,14 +269,48 @@ TIPS:
             return assignment
     
     async def run_research_with_updates(self, assignment_path: Path):
-        """Run research with live progress updates."""
-        # This is a simplified version - in the full implementation,
-        # we'd hook into the research engine's progress callbacks
+        """Run research with live progress updates and observations."""
         
-        # For now, run the research
-        reports = await self.research_engine.process_assignment(assignment_path)
+        # Progress tracking
+        start_time = datetime.now()
         
-        self.output(f"Research complete! Generated {len(reports)} report(s).", style="success")
+        # Callbacks for real-time updates
+        async def progress_callback(stats: dict):
+            """Update progress display."""
+            elapsed = (datetime.now() - start_time).seconds
+            minutes = elapsed // 60
+            
+            if console and RICH_AVAILABLE:
+                progress_text = (
+                    f"[bold]Research Progress[/bold]\n"
+                    f"Time: {minutes}m {elapsed % 60}s | "
+                    f"Companies: {stats.get('companies_found', 0)} | "
+                    f"People: {stats.get('people_found', 0)} | "
+                    f"Patterns: {stats.get('patterns_detected', 0)}"
+                )
+                console.print(progress_text)
+            else:
+                print(f"\rProgress: {minutes}m - {stats.get('companies_found', 0)} companies found", end='')
+        
+        async def observation_callback(observation: str):
+            """Handle Aria's observations."""
+            self.output(observation, style="observation")
+        
+        # Run research with integration
+        reports = await self.research_integration.process_with_observations(
+            assignment_path,
+            progress_callback=progress_callback,
+            observation_callback=observation_callback
+        )
+        
+        # Final statistics
+        duration = (datetime.now() - start_time).seconds // 60
+        stats = self.research_integration.get_progress_stats()
+        stats['duration_minutes'] = duration
+        
+        # Generate completion message
+        completion_msg = self.personality.research_complete_message(stats)
+        self.output(completion_msg, style="success")
         
         for report in reports:
             self.output(f"📄 Report saved to: {report}", style="info")
@@ -301,7 +342,13 @@ TIPS:
             sys.exit(0)
         elif cmd == '/status':
             if self.is_researching:
-                self.output("Research in progress...", style="info")
+                stats = self.research_integration.get_progress_stats()
+                status_msg = (
+                    f"Research in progress... "
+                    f"Found {stats['companies_found']} companies, "
+                    f"{stats['people_found']} people"
+                )
+                self.output(status_msg, style="info")
             else:
                 self.output("Ready for new research.", style="info")
         else:
