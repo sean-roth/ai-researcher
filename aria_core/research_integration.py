@@ -11,6 +11,7 @@ import json
 
 from src.research_engine import ResearchEngine
 from aria_core.aria_personality import AriaPersonality
+from aria_core.prompt_library import PromptLibrary
 
 
 class AriaResearchIntegration:
@@ -19,6 +20,7 @@ class AriaResearchIntegration:
     def __init__(self, config_path: str = "config.yaml"):
         self.research_engine = ResearchEngine(config_path)
         self.personality = AriaPersonality()
+        self.prompt_library = PromptLibrary()
         self.progress_callback = None
         self.observation_callback = None
         
@@ -38,6 +40,17 @@ class AriaResearchIntegration:
         self.progress_callback = progress_callback
         self.observation_callback = observation_callback
         
+        # Load assignment to determine research type
+        with open(assignment_path, 'r') as f:
+            assignment = yaml.safe_load(f)
+        
+        # Enhance assignment with structured prompts
+        assignment = self._enhance_assignment_with_prompts(assignment)
+        
+        # Save enhanced assignment
+        with open(assignment_path, 'w') as f:
+            yaml.dump(assignment, f)
+        
         # Patch the research engine to intercept findings
         original_update = self.research_engine._update_found_entities
         self.research_engine._update_found_entities = self._update_with_observations
@@ -54,6 +67,86 @@ class AriaResearchIntegration:
         finally:
             # Restore original method
             self.research_engine._update_found_entities = original_update
+    
+    def _enhance_assignment_with_prompts(self, assignment: Dict) -> Dict:
+        """Add structured prompts to the assignment based on research type."""
+        # Determine research type from objectives
+        objectives_text = ' '.join(assignment.get('objectives', [])).lower()
+        
+        research_type = 'leads'  # default
+        if 'competitor' in objectives_text:
+            research_type = 'competitor'
+        elif 'grant' in objectives_text:
+            research_type = 'grants'
+        elif 'course' in objectives_text or 'training content' in objectives_text:
+            research_type = 'course'
+        elif 'market' in objectives_text:
+            research_type = 'market'
+        
+        # Build context
+        context = {
+            'objectives': assignment.get('objectives', []),
+            'company_type': self._extract_company_type(objectives_text),
+            'location': self._extract_location(objectives_text),
+            'company_size': self._extract_company_size(objectives_text)
+        }
+        
+        # Get structured prompt
+        structured_prompt = self.prompt_library.get_research_prompt(research_type, context)
+        
+        # Add to assignment
+        if 'research_instructions' not in assignment:
+            assignment['research_instructions'] = structured_prompt
+        
+        # Add extraction prompts
+        assignment['extraction_prompt'] = self.prompt_library.get_extraction_prompt('company_details')
+        
+        return assignment
+    
+    def _extract_company_type(self, text: str) -> str:
+        """Extract company type from objectives text."""
+        keywords = {
+            'tech': ['tech', 'technology', 'software', 'IT', 'digital'],
+            'manufacturing': ['manufacturing', 'factory', 'production', 'industrial'],
+            'finance': ['finance', 'banking', 'fintech', 'financial'],
+            'healthcare': ['healthcare', 'medical', 'pharma', 'hospital'],
+            'retail': ['retail', 'ecommerce', 'store', 'shopping'],
+            'education': ['education', 'school', 'university', 'training']
+        }
+        
+        for industry, terms in keywords.items():
+            if any(term in text for term in terms):
+                return industry
+        
+        return 'general business'
+    
+    def _extract_location(self, text: str) -> str:
+        """Extract location from objectives text."""
+        locations = {
+            'Japan': ['japan', 'tokyo', 'osaka', 'kyoto', 'japanese'],
+            'USA': ['america', 'united states', 'usa', 'us ', 'silicon valley'],
+            'Europe': ['europe', 'eu ', 'germany', 'france', 'uk ', 'london'],
+            'Asia': ['asia', 'singapore', 'hong kong', 'korea', 'china']
+        }
+        
+        for region, terms in locations.items():
+            if any(term in text for term in terms):
+                return region
+        
+        return 'global'
+    
+    def _extract_company_size(self, text: str) -> str:
+        """Extract company size from objectives text."""
+        if any(term in text for term in ['small', 'startup', 'sme']):
+            return '1-100 employees'
+        elif any(term in text for term in ['medium', 'mid-size', 'mid size']):
+            return '100-500 employees'
+        elif any(term in text for term in ['large', 'enterprise', 'corporation']):
+            return '500+ employees'
+        elif '200' in text or '300' in text or '500' in text:
+            return '200-500 employees'
+        
+        return 'any size'
     
     def _update_with_observations(self, findings: List[Dict]):
         """Intercept entity updates to make observations."""
