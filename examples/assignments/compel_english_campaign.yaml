@@ -1,0 +1,158 @@
+# Compel English - Japanese Tech Companies Campaign
+title: "Compel English - B2B Sales Outreach Campaign"
+campaign_type: "b2b_sales"
+priority: high
+deadline: "ongoing"
+
+# Product Information
+product:
+  name: "Compel English"
+  tagline: "Netflix meets pronunciation coach for Japanese professionals"
+  price_demo: 0
+  price_launch: 37.50  # 50% off
+  price_regular: 75.00
+  website: "compel-english.com"
+
+# Target Company Profile
+targeting:
+  industries:
+    - "Technology"
+    - "Finance"
+    - "Software"
+    - "E-commerce"
+  company_size:
+    min: 50
+    max: 500
+  geography:
+    primary: "Japan"
+    secondary: ["Singapore", "USA (Japanese-owned)"]
+  
+# Research Objectives
+objectives:
+  - "Find companies with recent global expansion or international teams"
+  - "Identify English requirements in job postings"
+  - "Discover communication challenges mentioned in employee reviews"
+  - "Find L&D, HR, or Training decision makers"
+  - "Score English training need from 1-10"
+  - "Check if they use competitor solutions"
+
+# Qualification Criteria
+qualification:
+  strong_signals:
+    - "Job posts requiring 'excellent English' or 'fluent English'"
+    - "Recent international expansion announcements"
+    - "Remote/distributed teams mentioned"
+    - "Glassdoor reviews mentioning communication challenges"
+    - "LinkedIn posts about global collaboration"
+  
+  disqualifiers:
+    - "Already using live English tutors successfully"
+    - "Company size under 50 employees"
+    - "Domestic Japan focus only"
+    - "In our blacklist"
+
+# Email Campaign Settings
+email_campaign:
+  daily_limit: 20
+  from_name: "Sean Roth"
+  from_email: "sean@altdomain.com"
+  
+  sequence:
+    initial:
+      delay_days: 0
+      templates:
+        - "pain_point"
+        - "expansion_angle"
+        - "competitor_comparison"
+    
+    follow_up_1:
+      delay_days: 3
+      template: "case_study"
+      condition: "no_response"
+    
+    follow_up_2:
+      delay_days: 7
+      template: "quick_question"
+      condition: "no_response"
+    
+    follow_up_3:
+      delay_days: 14
+      template: "final_value"
+      condition: "no_response"
+
+# Response Handling
+response_handling:
+  interested:
+    - action: "send_demo_link"
+    - action: "add_to_nurture_sequence"
+  
+  questions:
+    simple:
+      - "pricing" -> "send_pricing_info"
+      - "how it works" -> "send_demo_video"
+      - "implementation" -> "send_onboarding_guide"
+    complex:
+      - action: "flag_for_human"
+  
+  not_interested:
+    - action: "mark_closed_lost"
+    - action: "ask_for_feedback"
+  
+  unsubscribe:
+    - action: "add_to_suppression"
+    - action: "remove_from_all_campaigns"
+
+# Research Focus Areas
+research_priorities:
+  high:
+    - "English job requirements"
+    - "International expansion news"
+    - "Decision maker identification"
+  
+  medium:
+    - "Current training solutions"
+    - "Company culture around learning"
+    - "Budget cycles"
+  
+  low:
+    - "Competitor analysis"
+    - "Industry trends"
+
+# Success Metrics
+success_metrics:
+  research:
+    companies_per_night: 20
+    qualified_leads_percentage: 60
+    decision_makers_per_company: 3
+  
+  email:
+    open_rate_target: 40
+    response_rate_target: 20
+    positive_response_target: 10
+  
+  conversion:
+    email_to_demo: 5
+    demo_to_trial: 30
+    trial_to_paid: 20
+
+# Special Instructions
+special_instructions:
+  - "Emphasize the narrative/story aspect - it's not boring training"
+  - "Mention specific pronunciation challenges (r/l distinction)"
+  - "Reference their specific business context from research"
+  - "Keep emails under 150 words"
+  - "Use casual but professional tone"
+  - "Always personalize the first line"
+
+# Output Settings
+output:
+  obsidian_vault: "G:/My Drive/Sales Intelligence Vault"
+  reports:
+    daily_summary: true
+    company_profiles: true
+    campaign_analytics: true
+  
+  notifications:
+    hot_leads: true  # Notify immediately for 9-10 score leads
+    daily_summary: true
+    errors: true
